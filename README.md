@@ -77,5 +77,40 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 抽取适用集（采集页面 → 适用模板 → 正式清洗 → 补采回填）
+
+`data_extract` 旧口径按脚本返回全部生效字段，不区分页面类型。新增的抽取适用集链路
+（`backend/app/services/extract_scope.py`、`backend/app/routers/extract.py`）把口径收敛为
+「按实际页面类型筛选 + 按覆盖字段排序」，并把清洗结果和补采项持久化到 `data/extract/`。
+
+领域约束：
+
+- 原页必须先「确认」才能查询适用集和启动正式清洗；
+- 同一条正式清洗行只消费已确认原页和一个确定版本的模板（含版本指纹快照），
+  缺字段不允许从别的页面、别的来源拼入；
+- 候选模板按「覆盖字段数 → 可出数字段数」降序排序，并标注 `选中/未用/不足` 决策，全部可回查；
+- 清洗只持久化可出数字段，本页未覆盖字段生成补采项；同页同字段不重复建任务；
+- 补采领取后回填到同一条正式行的清洗范围，不影响其他页面；
+- 模板修订换版后历史适用集与正式行保留旧版本快照，仍可按原模板版本查询、复算；
+- 清洗工序「启用工序」动作（输入源写 `page:<原页编号>`）会自动执行该链路。
+
+专用接口（前缀 `/api/extract`）：
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /demo-seed` | 幂等灌入演示场景（商品详情页通用/专用模板 + 列表页其他来源） |
+| `POST /pages`、`POST /pages/{id}/confirm`、`GET /pages` | 采集原页登记、确认、查询 |
+| `POST /templates`、`POST /templates/{id}/revise` | 适用模板登记、修订换版 |
+| `POST /pages/{id}/scope-sets`、`GET /scope-sets` | 按页面类型计算/复算适用集 |
+| `POST /cleaning`、`GET /clean-rows` | 启动正式清洗、按原页/模板版本查正式行 |
+| `GET /supplement-tasks`、`POST .../{id}/claim`、`POST .../{id}/backfill` | 补采领取与回填 |
+| `GET /audit` | 原页、适用集、正式行、补采、模板事件全量回查 |
+
+落盘文件（`data/extract/`）：`pages.jsonl`、`scope_sets.jsonl`、`clean_rows.jsonl`、
+`supplement_tasks.jsonl`、`template_registry.jsonl`；管道触发记录在
+`data/reports/pipeline_extract_scope.jsonl`。
+
+验收测试：`backend/tests/test_extract_scope.py`（9 个用例，与 `test_cross_module.py` 互相独立）。
+
 领域：数据工程
 子方向：数据采集、爬虫与RPA

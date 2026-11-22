@@ -14,6 +14,11 @@ def _version_id(entry: dict[str, Any]) -> str:
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
+def compute_entry_version(entry: dict[str, Any]) -> str:
+    """对外暴露的版本指纹计算，供模板修订等不走状态动作的变更复用同一口径。"""
+    return _version_id(entry)
+
+
 # 跨模块副作用注册表：key 为 (module, action)，value 为回调函数列表
 _CROSS_MODULE_HOOKS: dict[tuple[str, str], list[Callable[[dict[str, Any]], None]]] = {}
 
